@@ -17,18 +17,29 @@ export const AuthProvider = ({ children }) => {
     try {
       const token = await AsyncStorage.getItem('token');
       if (token) {
-        const userData = await AsyncStorage.getItem('user');
-        if (userData) {
-          setUser(JSON.parse(userData));
-        } else {
-          // If we have a token but no user data, clear everything
-          await AsyncStorage.removeItem('token');
+        try {
+          // Fetch fresh user data
+          const profileResponse = await authAPI.getProfile();
+          const userData = {
+            _id: profileResponse.data._id,
+            email: profileResponse.data.email,
+            username: profileResponse.data.username,
+            uploadedProducts: profileResponse.data.uploadedProducts || []
+          };
+          await AsyncStorage.setItem('user', JSON.stringify(userData));
+          setUser(userData);
+        } catch (err) {
+          console.error('Error fetching user profile:', err);
+          // If profile fetch fails, clear everything
+          await AsyncStorage.multiRemove(['token', 'user']);
+          setUser(null);
         }
       }
     } catch (err) {
       console.error('Error checking auth status:', err);
       // Clear potentially corrupted data
       await AsyncStorage.multiRemove(['token', 'user']);
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -46,15 +57,20 @@ export const AuthProvider = ({ children }) => {
         throw new Error('Invalid response: Missing token');
       }
 
-      const userData = {
-        _id: response.data._id,
-        email: response.data.email,
-        username: response.data.username
-      };
       const token = response.data.token;
-
       // Store token first
       await AsyncStorage.setItem('token', token);
+
+      // Fetch complete user profile
+      const profileResponse = await authAPI.getProfile();
+      console.log('Profile response:', profileResponse.data);
+      
+      const userData = {
+        _id: profileResponse.data._id,
+        email: profileResponse.data.email,
+        username: profileResponse.data.username,
+        uploadedProducts: profileResponse.data.uploadedProducts || []
+      };
       
       // Then store user data
       const userString = JSON.stringify(userData);
@@ -79,12 +95,22 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.register(userData);
       console.log('Registration response:', response.data);
       
-      const { token, user: newUser } = response.data;
-      
+      const { token } = response.data;
       await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(newUser));
+
+      // Fetch complete user profile
+      const profileResponse = await authAPI.getProfile();
+      console.log('Profile response:', profileResponse.data);
       
-      setUser(newUser);
+      const completeUserData = {
+        _id: profileResponse.data._id,
+        email: profileResponse.data.email,
+        username: profileResponse.data.username,
+        uploadedProducts: profileResponse.data.uploadedProducts || []
+      };
+      
+      await AsyncStorage.setItem('user', JSON.stringify(completeUserData));
+      setUser(completeUserData);
       return true;
     } catch (err) {
       console.error('Registration error:', err);
@@ -106,6 +132,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUserProducts = async (productId) => {
+    try {
+      if (!user) return;
+      
+      const updatedUser = {
+        ...user,
+        uploadedProducts: [...(user.uploadedProducts || []), productId]
+      };
+      
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } catch (err) {
+      console.error('Error updating user products:', err);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -115,6 +157,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        updateUserProducts,
         isAuthenticated: !!user,
       }}
     >

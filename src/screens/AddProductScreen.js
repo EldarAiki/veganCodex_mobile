@@ -23,13 +23,11 @@ import { productAPI } from '../services/api';
 
 // Predefined categories and countries
 const CATEGORIES = [
-  'Snacks',
-  'Beverages',
-  'Ready Meals',
-  'Dairy Alternatives',
-  'Meat Alternatives',
-  'Sweets',
-  'Other',
+  'Local dish',
+  'street food',
+  'snack',
+  'dessert',
+  'drink'
 ];
 
 const COUNTRIES = [
@@ -44,7 +42,7 @@ const COUNTRIES = [
 ];
 
 const AddProductScreen = ({ navigation }) => {
-  const { user } = useAuth();
+  const { user, updateUserProducts } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -122,11 +120,13 @@ const AddProductScreen = ({ navigation }) => {
 
       // Create form data for multipart request
       const productFormData = new FormData();
-      productFormData.append('name', formData.name);
-      productFormData.append('category', formData.category);
-      productFormData.append('country', formData.country);
-      productFormData.append('description', formData.description);
-      productFormData.append('ingredients', formData.ingredients);
+      
+      // Append text fields
+      Object.keys(formData).forEach(key => {
+        if (formData[key]) {
+          productFormData.append(key, formData[key]);
+        }
+      });
 
       // Append images
       images.forEach((image, index) => {
@@ -135,20 +135,40 @@ const AddProductScreen = ({ navigation }) => {
         const match = /\.(\w+)$/.exec(filename);
         const type = match ? `image/${match[1]}` : 'image/jpeg';
 
-        productFormData.append('images', {
+        // Create a new Blob from the image URI
+        const imageData = {
           uri: imageUri,
+          type: type,
           name: filename,
-          type,
-        });
+        };
+
+        // Append each image with the correct field name
+        productFormData.append('images', imageData);
       });
 
-      await productAPI.addProduct(productFormData);
+      // Log the form data for debugging
+      const formDataObj = {};
+      for (const [key, value] of productFormData._parts) {
+        formDataObj[key] = value;
+      }
+      console.log('Submitting form data:', formDataObj);
+
+      const response = await productAPI.addProduct(productFormData);
+      console.log('Server response:', response);
+      
+      // Update user's uploadedProducts
+      await updateUserProducts(response.data._id);
+      
       setSnackbarMessage('Product added successfully!');
       setSnackbarVisible(true);
       navigation.goBack();
     } catch (err) {
       console.error('Error adding product:', err);
-      setError(err.message || 'Failed to add product');
+      if (err.response?.data?.errors) {
+        setError(err.response.data.errors[0].msg || 'Failed to add product');
+      } else {
+        setError(err.message || 'Failed to add product');
+      }
     } finally {
       setLoading(false);
     }

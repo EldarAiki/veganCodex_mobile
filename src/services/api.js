@@ -15,6 +15,14 @@ api.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+
+      // Check if the request contains FormData
+      if (config.data instanceof FormData) {
+        config.headers['Content-Type'] = 'multipart/form-data';
+        // Remove the transformRequest for FormData
+        delete config.transformRequest;
+      }
+
       return config;
     } catch (error) {
       return Promise.reject(error);
@@ -80,16 +88,25 @@ export const authAPI = {
 // Product endpoints
 export const productAPI = {
   searchProducts: (query) => {
-    if (query.country) {
-      return api.get('/products', { params: { location: query.country } });
-    }
-    if (query.search) {
-      return api.get('/products', { params: { search: query.search } });
-    }
-    return api.get('/products');
+    const params = {};
+    if (query.country) params.location = query.country;
+    if (query.search) params.search = query.search;
+    if (query.addedBy) params.addedBy = query.addedBy;
+    return api.get('/products', { params });
   },
   getProductById: (id) => api.get(`/products/${id}`),
-  addProduct: (productData) => api.post('/products', productData),
+  addProduct: (productData) => {
+    console.log('Sending product data:', productData);
+    return api.post('/products', productData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'Accept': 'application/json',
+      },
+      transformRequest: (data) => {
+        return data; // Prevent axios from trying to transform FormData
+      },
+    });
+  },
   updateProduct: (id, productData) => api.put(`/products/${id}`, productData),
   deleteProduct: (id) => api.delete(`/products/${id}`),
   addComment: (productId, commentData) => api.post(`/products/${productId}/comments`, commentData),
